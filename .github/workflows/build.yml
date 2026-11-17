@@ -41,7 +41,7 @@ jobs:
             -destination generic/platform=iOS \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            DEBUG_INFORMATION_FORMAT=dwarf \
+            DEBUG_INFORMATION_FORMAT=dwarf ARCHS=arm64 \
             'OTHER_LDFLAGS=$(inherited) -framework Photos' | tail -40
 
       - name: Add photo permission strings and package .ipa
@@ -61,6 +61,11 @@ jobs:
           # dSYM внутри .app ломает подпись в Sideloadly — убираем
           find "$APP" -name "*.dSYM" -prune -exec rm -rf {} +
           find "$APP" -name "*.dSYM" | wc -l
+          # Как в официальной сборке appium: без Frameworks/ верхнего уровня — XCTest берётся
+          # из Developer-образа самого айфона (иначе старые копии из Xcode не стартуют на новой iOS).
+          # WebDriverAgentLib.framework остаётся внутри PlugIns/*.xctest/Frameworks.
+          rm -rf "$APP/Frameworks"
+          ls "$APP/PlugIns/WebDriverAgentRunner.xctest/Frameworks" || true
           mkdir -p out/Payload
           cp -R "$APP" out/Payload/
           cd out && zip -qry ../OverView-WDA.ipa Payload && cd ..
