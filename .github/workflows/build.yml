@@ -41,6 +41,7 @@ jobs:
             -destination generic/platform=iOS \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            DEBUG_INFORMATION_FORMAT=dwarf \
             'OTHER_LDFLAGS=$(inherited) -framework Photos' | tail -40
 
       - name: Add photo permission strings and package .ipa
@@ -57,6 +58,9 @@ jobs:
             /usr/libexec/PlistBuddy -c "Delete :UIFileSharingEnabled" "$P" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$P"
           done
+          # dSYM внутри .app ломает подпись в Sideloadly — убираем
+          find "$APP" -name "*.dSYM" -prune -exec rm -rf {} +
+          find "$APP" -name "*.dSYM" | wc -l
           mkdir -p out/Payload
           cp -R "$APP" out/Payload/
           cd out && zip -qry ../OverView-WDA.ipa Payload && cd ..
