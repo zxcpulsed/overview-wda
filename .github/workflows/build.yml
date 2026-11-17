@@ -66,6 +66,17 @@ jobs:
           # WebDriverAgentLib.framework остаётся внутри PlugIns/*.xctest/Frameworks.
           rm -rf "$APP/Frameworks"
           ls "$APP/PlugIns/WebDriverAgentRunner.xctest/Frameworks" || true
+          # Иконка и название «OverView»: собираем свой каталог картинок прямо в .app
+          xcrun actool icon/Icons.xcassets --compile "$APP" --platform iphoneos \
+            --minimum-deployment-target 15.0 --app-icon AppIcon --target-device iphone --target-device ipad \
+            --output-partial-info-plist icon_partial.plist --output-format human-readable-text
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons~ipad" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Merge icon_partial.plist" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string OverView" "$APP/Info.plist"
+          ls "$APP" | grep -i -E "appicon|assets" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$APP/Info.plist" || true
           mkdir -p out/Payload
           cp -R "$APP" out/Payload/
           cd out && zip -qry ../OverView-WDA.ipa Payload && cd ..
