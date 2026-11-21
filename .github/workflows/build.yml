@@ -52,6 +52,21 @@ jobs:
           open(p, "w").write(s)
           PY
           grep -n '"xctest"' "$F"
+          # --udid в оригинале сравнивается с внутренним номером usbmux, а не с UDID — чиним
+          D=impactor/crates/plume_utils/src/device.rs
+          python3 - "$D" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p).read()
+          old = '.find(|d| d.device_id.to_string() == device_id)'
+          assert old in s, "device pattern not found"
+          new = ('.find(|d| d.device_id.to_string() == device_id'
+                 ' || d.udid.eq_ignore_ascii_case(device_id)'
+                 ' || d.udid.replace("-", "").eq_ignore_ascii_case(&device_id.replace("-", "")))')
+          s = s.replace(old, new, 1)
+          open(p, "w").write(s)
+          PY
+          grep -n "eq_ignore_ascii_case" "$D"
 
       - name: Build plumesign.exe
         run: |
