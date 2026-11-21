@@ -2,7 +2,8 @@ name: Build
 
 # Сборка WebDriverAgent с командами OverView (альбом + очистка) в неподписанный .ipa.
 # Запуск: вкладка Actions -> Build -> Run workflow. Готовый файл — в Artifacts внизу страницы сборки.
-# Подписать и поставить: Sideloadly (как обычный WDA).
+# Подписать и поставить: сам OverView Uploader (вкладка «Установка WDA», Apple ID клиента).
+# Результат кладётся в релиз `latest` этого репозитория: OverView-WDA.ipa + plumesign.exe.
 
 on:
   workflow_dispatch:
@@ -12,7 +13,60 @@ on:
         required: false
         default: "master"
 
+permissions:
+  contents: write
+
 jobs:
+  plumesign:
+    # CLI-подписчик (Impactor/plumesign, MIT) под Windows. Патч: .xctest тоже подписывается
+    # (в оригинале такие бандлы пропускаются — WDA без этого не запустится).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: claration/Impactor
+          ref: v2.7.3
+          path: impactor
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 nasm
+
+      - name: Patch to sign xctest bundles
+        run: |
+          set -e
+          F=impactor/crates/plume_utils/src/bundle.rs
+          python3 - "$F" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p).read()
+          old = '"dylib" => Some(BundleType::Dylib),'
+          assert old in s, "pattern not found"
+          s = s.replace(old, old + '\n            "xctest" => Some(BundleType::Framework),', 1)
+          open(p, "w").write(s)
+          PY
+          grep -n '"xctest"' "$F"
+
+      - name: Build plumesign.exe
+        run: |
+          cd impactor
+          cargo build --release --target x86_64-pc-windows-gnu -p plumesign
+          mkdir -p ../dist
+          cp target/x86_64-pc-windows-gnu/release/plumesign.exe ../dist/plumesign.exe
+          ls -la ../dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plumesign
+          path: dist/plumesign.exe
+          retention-days: 30
+
   build:
     runs-on: macos-15
     timeout-minutes: 45
@@ -87,3 +141,26 @@ jobs:
           name: OverView-WDA
           path: OverView-WDA.ipa
           retention-days: 30
+
+  release:
+    needs: [build, plumesign]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: rel
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd rel && ls -la && sha256sum OverView-WDA.ipa plumesign.exe > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: OverView WDA (latest)
+          make_latest: true
+          files: |
+            rel/OverView-WDA.ipa
+            rel/plumesign.exe
+            rel/SHA256SUMS.txt
